@@ -41,6 +41,7 @@ def model_and_diffusion_defaults():
         config_name='bert-base-uncased',
         experiment_mode='lm',
         logits_mode=1,
+        cfg=False,
     )
 
 
@@ -72,6 +73,7 @@ def create_model_and_diffusion(
     config_name,
     experiment_mode,
     logits_mode,
+    cfg,
     **kwargs,
 ):
     model = create_model(
@@ -94,6 +96,7 @@ def create_model_and_diffusion(
         config_name=config_name,
         experiment_mode=experiment_mode,
         logits_mode=logits_mode,
+        cfg=cfg,
     )
     diffusion = create_gaussian_diffusion(
         steps=diffusion_steps,
@@ -131,6 +134,7 @@ def create_model(
     config_name='',
     experiment_mode='lm',
     logits_mode=1,
+    cfg=False,
 ):
     print(f'creating model, based on {model_arch}')
     if model_arch == 'conv-unet':
@@ -251,7 +255,8 @@ def create_model(
         attention_ds = []
         for res in attention_resolutions.split(","):
             attention_ds.append(image_size // int(res))
-
+        print("Model is a TransformerNetModel2")
+        print(f"CFG is {cfg}, in_channels was originally {in_channel}")
         return TransformerNetModel2(
             in_channels=in_channel,  # 3, DEBUG**
             model_channels=num_channels,
@@ -270,6 +275,7 @@ def create_model(
             vocab_size=vocab_size,
             experiment_mode=experiment_mode,
             logits_mode=logits_mode,
+            cfg=cfg,
         )
     else:
         raise NotImplementedError

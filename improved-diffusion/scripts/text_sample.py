@@ -5,7 +5,8 @@ numpy array. This can be used to produce samples for FID evaluation.
 
 import argparse
 import os, json
-
+import sys
+sys.path.append('/home/ramvenkat98/Diffusion-LM/improved-diffusion')
 import numpy as np
 import torch as th
 import torch.distributed as dist
@@ -46,6 +47,7 @@ def main():
 
     if args.experiment == 'random1': args.experiment = 'random'
     logger.log("creating model and diffusion...")
+    print("CFG is", args.cfg)
     model, diffusion = create_model_and_diffusion(
         **args_to_dict(args, model_and_diffusion_defaults().keys())
     )
@@ -56,7 +58,7 @@ def main():
     pytorch_total_params = sum(p.numel() for p in model.parameters())
     logger.log(f'the parameter count is {pytorch_total_params}')
 
-    # diffusion.rescale_timesteps = False  # DEBUG --> REMOVE
+    diffusion.rescale_timesteps = False  # DEBUG --> REMOVE
     print(diffusion.rescale_timesteps, 'a marker for whether we are in the debug mode')
     model.to(dist_util.dev())
     model.eval() # DEBUG
@@ -111,6 +113,11 @@ def main():
                 low=0, high=NUM_CLASSES, size=(args.batch_size,), device=dist_util.dev()
             )
             model_kwargs["y"] = classes
+        if args.cfg:
+            embedding_path = f'/home/ramvenkat98/Diffusion-LM/datasets/e2e_data/src1_test_embeddings.pt'
+            word_embeddings = th.load(embedding_path)[:20] # 0]
+            print("Word embeddings shape:", word_embeddings.shape)
+            model_kwargs['embedding_conditional'] = word_embeddings.to('cuda')
         sample_fn = (
             diffusion.p_sample_loop if not args.use_ddim else diffusion.ddim_sample_loop
         )
@@ -132,6 +139,7 @@ def main():
             denoised_fn=partial(denoised_fn_round, args, model3.cuda()) if args.clamp == 'clamp' else None,
             model_kwargs=model_kwargs,
             top_p =args.top_p,
+            progress = True,
         )
 
         if args.model_arch == '1d-unet':

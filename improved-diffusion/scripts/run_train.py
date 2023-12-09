@@ -117,6 +117,7 @@ if __name__ == '__main__':
         print(COMMANDLINE, file=f)
 
     print(COMMANDLINE)
+    assert False
     if args.submit == 'no':
         os.system(COMMANDLINE)  # textattack/roberta-base-ag-news # textattack/roberta-base-imdb
     # #

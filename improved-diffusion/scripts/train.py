@@ -1,7 +1,8 @@
 """
 Train a diffusion model on images.
 """
-
+import sys
+sys.path.append('/home/ramvenkat98/Diffusion-LM/improved-diffusion')
 import argparse
 import json, torch, os
 import numpy as np
@@ -32,6 +33,7 @@ def main():
 
 
     logger.log("creating model and diffusion...")
+    print("cfg is", args.cfg)
     model, diffusion = create_model_and_diffusion(
         **args_to_dict(args, model_and_diffusion_defaults().keys())
     )
@@ -76,6 +78,7 @@ def main():
         elif args.use_bert_tokenizer == 'yes':
             rev_tokenizer = AutoTokenizer.from_pretrained('bert-base-uncased')
         else:
+            print("Rev tokenizer is None")
             rev_tokenizer = None
 
         if args.experiment == 'random1':
@@ -90,6 +93,7 @@ def main():
             model22.weight = model22_weight
             model22.weight.requires_grad=False
         else:
+            print("model22 is None")
             model22 = None
 
         data = load_data_text(
@@ -102,6 +106,7 @@ def main():
             padding_mode=args.padding_mode, #block, pad
             load_vocab=rev_tokenizer,
             model=model22,
+            cfg=args.cfg,
         )
         next(data)
         model2, tokenizer = load_models(args.modality, args.experiment, args.model_name_or_path, args.in_channel,
@@ -122,6 +127,7 @@ def main():
             split='valid',
             load_vocab=rev_tokenizer,
             model=model2,
+            cfg=args.cfg,
         )
 
     # dist.barrier()
@@ -196,7 +202,9 @@ def create_argparser():
                          commonGen_train = 'diffusion_lm/common-gen/commongen_data',
                          emb_scale_factor=1.0, noise_level=0.0, cache_mode='no', use_bert_tokenizer='no',
                          padding_mode='block',
-                         preprocessing_num_workers=1)
+                         preprocessing_num_workers=1,
+                         cfg=False,
+    )
     defaults.update(model_and_diffusion_defaults())
     defaults.update(text_defaults)
     parser = argparse.ArgumentParser()

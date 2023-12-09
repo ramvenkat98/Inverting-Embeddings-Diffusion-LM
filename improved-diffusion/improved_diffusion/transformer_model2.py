@@ -717,6 +717,7 @@ class TransformerNetModel2(nn.Module):
         experiment_mode='lm',
         init_pretrained=False,
         logits_mode=1,
+        cfg=False,
     ):
         super().__init__()
 
@@ -741,6 +742,7 @@ class TransformerNetModel2(nn.Module):
         self.num_heads = num_heads
         self.num_heads_upsample = num_heads_upsample
         self.logits_mode = logits_mode
+        self.cfg = cfg
 
         if training_mode == 'e2e':
             self.word_embedding = nn.Embedding(vocab_size, self.in_channels)
@@ -781,6 +783,9 @@ class TransformerNetModel2(nn.Module):
 
 
         # self.input_up_proj = trans_nd(config, in_channels, model_channels // attention_head_size, attention_head_size)
+        if self.cfg:
+            print(f"Increasing in_channels from {in_channels} to 768 more for cfg")
+            in_channels += 768
         self.input_up_proj = nn.Sequential(nn.Linear(in_channels, config.hidden_size),
                                               nn.Tanh(), nn.Linear(config.hidden_size, config.hidden_size))
         if init_pretrained:
@@ -863,7 +868,7 @@ class TransformerNetModel2(nn.Module):
             raise NotImplementedError
 
 
-    def forward(self, x, timesteps, y=None, src_ids=None, src_mask=None):
+    def forward(self, x, timesteps, y=None, src_ids=None, src_mask=None, embedding_conditional=None):
         """
         Apply the model to an input batch.
 
@@ -876,7 +881,7 @@ class TransformerNetModel2(nn.Module):
         assert (y is not None) == (
             self.num_classes is not None
         ), "must specify y if and only if the model is class-conditional"
-
+        assert((embedding_conditional is not None) or (not self.cfg))
         hs = []
         emb = self.time_embed(timestep_embedding(timesteps, self.model_channels))
 
@@ -894,8 +899,13 @@ class TransformerNetModel2(nn.Module):
             assert y.shape == (x.shape[0],)
             emb = emb + self.label_emb(y)
 
-
-        emb_x = self.input_up_proj(x)
+        if self.cfg:
+            # print(f"CFG Concat: x shape is {x.shape}, embedding_conditional shape is {embedding_conditional.shape}")
+            # print(len(timesteps))
+            emb_x = self.input_up_proj(torch.cat((x, embedding_conditional.unsqueeze(1).expand(-1, x.size(1), -1)), dim = 2))
+            # print(f"emb_x shape: {emb_x.shape}")
+        else:
+            emb_x = self.input_up_proj(x)
         seq_length = x.size(1)
         position_ids = self.position_ids[:, : seq_length ]
         # print(emb_x.shape, emb.shape, self.position_embeddings)

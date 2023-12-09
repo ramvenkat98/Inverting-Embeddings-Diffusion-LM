@@ -13,11 +13,12 @@ import torch
 from collections import Counter, defaultdict
 from functools import partial
 from itertools import chain
+import random
 
 
 def load_data_text(
     *, data_dir, batch_size, image_size, class_cond=False, deterministic=False, data_args=None, 
-        task_mode='roc', model=None, padding_mode='block', split='train', load_vocab=None,
+        task_mode='roc', model=None, padding_mode='block', split='train', load_vocab=None, cfg=False,
 ):
     """
     For a dataset, create a generator over (images, kwargs) pairs.
@@ -38,6 +39,7 @@ def load_data_text(
     print('hello loading text data. ')
 
     if data_args.experiment.startswith('random') and model is None:
+        print("Model is None")
         model = None
     elif data_args.experiment.startswith('random') and model is not None:
         print('loading initialized random embeddings. ')
@@ -55,7 +57,10 @@ def load_data_text(
         print('hello loading e2e-tgt. ')
         training_data, model = get_corpus_rocstory(data_args, model, image_size,
                                             padding_mode=padding_mode, split=split,
-                                            load_vocab=load_vocab)
+                                            load_vocab=load_vocab, cfg=cfg)
+    elif task_mode == 'nq-for-embedding-inversion':
+        print('hello loading nq-for-embedding-inversion. ')
+        training_data, model = get_nq_data(data_args, model, split = split)
     elif task_mode == 'yelp':
         print('hello loading yelp ')
         training_data, model = get_corpus_rocstory(data_args, model, image_size,
@@ -87,11 +92,13 @@ def load_data_text(
             model_emb=model
         )
     else:
+        print("TextDataset (with cache)")
         dataset = TextDataset(
             training_data,
             image_size,
             data_args,
             model_arch=data_args.model_arch,
+            cfg=cfg,
         )
 
     if deterministic:
@@ -237,7 +244,100 @@ def helper_tokenize_stream(sentence_lst, vocab_dict, model, seqlen, data_args, p
     print(f"RAM used: {psutil.Process().memory_info().rss / (1024 * 1024):.2f} MB")
     return raw_datasets
 
-def helper_tokenize_encode(sentence_lst, vocab_dict, model, seqlen, data_args, padding_mode, ):
+def helper_tokenize_encode(sentence_lst, vocab_dict, model, seqlen, data_args, padding_mode, cfg = False, word_embeddings = None):
+    result_train_lst = []
+    group_lst = defaultdict(list)
+    assert((not cfg) or (word_embeddings is not None))
+    with torch.no_grad():
+        for (i, input_ids) in enumerate(sentence_lst):
+            words = input_ids
+            tokenized_ = [vocab_dict.get(x, vocab_dict['UNK']) for x in input_ids]
+            input_ids = [0] + tokenized_ + [1]
+            group_lst['word_ids'].append(input_ids)
+        if cfg:
+            group_lst['word_embeddings'] = word_embeddings
+            print(group_lst['word_embeddings'].shape)
+            print(group_lst['word_embeddings'][:2])
+        print(group_lst['word_ids'][:2])
+
+        if padding_mode == 'block':
+            print('padding mode is block')
+            concatenated_examples = {k: sum(group_lst[k], []) for k in group_lst.keys()}
+            total_length = len(concatenated_examples[list(group_lst.keys())[0]])
+            block_size = seqlen
+            total_length = (total_length // block_size) * block_size
+            # Split by chunks of max_len.
+            group_lst = {
+                k: [t[i: i + block_size] for i in range(0, total_length, block_size)]
+                for k, t in concatenated_examples.items()
+            }
+        elif padding_mode == 'pad':
+            print('padding mode is pad')
+            max_length = seqlen
+            if not cfg:
+                group_lst['word_ids'] = _collate_batch_helper(group_lst['word_ids'], vocab_dict['PAD'], max_length)
+            else:
+                group_lst['word_ids'], group_lst['word_embeddings'] = _collate_batch_helper_cfg(
+                    group_lst['word_ids'],
+                    group_lst['word_embeddings'],
+                    vocab_dict['PAD'],
+                    max_length,
+                )
+
+        for (i, input_ids) in enumerate(group_lst['word_ids']):
+            if data_args.experiment.startswith('random'):
+                hidden_state = model(torch.tensor(input_ids))
+            elif data_args.experiment == 'gpt2_pre_compress':
+                input_ids2 = torch.tensor(input_ids).to(model.device)
+                input_embs = model.transformer.wte(input_ids2)  # input_embs
+                hidden_state = model.down_proj(input_embs)
+                hidden_state = hidden_state * data_args.emb_scale_factor
+            elif data_args.experiment == 'glove':
+                hidden_state = model(torch.tensor(input_ids))
+            d = {'input_ids': input_ids, 'hidden_states': hidden_state.cpu().tolist()}
+            if cfg:
+                d['input_embedding'] = group_lst['word_embeddings'][i]
+            result_train_lst.append(d)
+
+    return result_train_lst
+
+def load_glove_model(File):
+    print("Loading Glove Model")
+    glove_model = {}
+    with open(File,'r') as f:
+        for line in f:
+            split_line = line.split()
+            word = split_line[0]
+            embedding = torch.tensor(np.array(split_line[1:], dtype=np.float64))
+            # embedding = np.array(split_line[1:], dtype=np.float64)
+            glove_model[word] = embedding
+    print(f"{len(glove_model)} words loaded!")
+    return glove_model
+
+def load_glove(vocab):
+    model = torch.nn.Embedding(len(vocab), 50)
+    glove_model = load_glove_model('predictability/glove/glove.6B.50d.txt')
+    array_lst = []
+    count_ = 0
+    for word, idx in vocab.items():
+        if word in glove_model:
+            array_lst.append(glove_model[word])
+        else:
+            count_ += 1
+            array_lst.append(torch.randn(50))
+    print(f'{count_} out of {len(vocab)} is initialized. ')
+    array_lst = torch.stack(array_lst)
+    print(torch.norm(array_lst, dim=-1).mean())
+    model.weight.data = array_lst
+    return model
+
+def get_nq_data(data_args, model, split = 'train'):
+    if split == 'val':
+        raise NotImplementedError
+    train_dataset_path = '/home/ramvenkat98/.cache/inversion/0aaa9cff054220b8af32ddcf5a1e837b.arrow'
+    print("Loading dataset from", train_dataset_path)
+    train_dataset = datasets.load_from_disk(train_dataset_path)
+    '''
     result_train_lst = []
     group_lst = defaultdict(list)
     with torch.no_grad():
@@ -276,43 +376,15 @@ def helper_tokenize_encode(sentence_lst, vocab_dict, model, seqlen, data_args, p
             result_train_lst.append({'input_ids': input_ids, 'hidden_states': hidden_state.cpu().tolist()})
 
     return result_train_lst
-
-def load_glove_model(File):
-    print("Loading Glove Model")
-    glove_model = {}
-    with open(File,'r') as f:
-        for line in f:
-            split_line = line.split()
-            word = split_line[0]
-            embedding = torch.tensor(np.array(split_line[1:], dtype=np.float64))
-            # embedding = np.array(split_line[1:], dtype=np.float64)
-            glove_model[word] = embedding
-    print(f"{len(glove_model)} words loaded!")
-    return glove_model
-
-def load_glove(vocab):
-    model = torch.nn.Embedding(len(vocab), 50)
-    glove_model = load_glove_model('predictability/glove/glove.6B.50d.txt')
-    array_lst = []
-    count_ = 0
-    for word, idx in vocab.items():
-        if word in glove_model:
-            array_lst.append(glove_model[word])
-        else:
-            count_ += 1
-            array_lst.append(torch.randn(50))
-    print(f'{count_} out of {len(vocab)} is initialized. ')
-    array_lst = torch.stack(array_lst)
-    print(torch.norm(array_lst, dim=-1).mean())
-    model.weight.data = array_lst
-    return model
-
+    '''
+    pass
 
 def get_corpus_rocstory(data_args, model, image_size, padding_mode='block',
-                        split='train', load_vocab=None):
+                        split='train', load_vocab=None, cfg=False):
     import csv, torch, json
     from spacy.lang.en import English
-
+    if cfg and (data_args.modality != 'e2e-tgt'):
+        raise NotImplementedError
     if data_args.experiment_mode == 'lm':
         if data_args.modality == 'roc':
             print('loading dataset from ROCStory')
@@ -393,12 +465,15 @@ def get_corpus_rocstory(data_args, model, image_size, padding_mode='block',
             if split == 'train':
                 print('loading form the TRAIN set')
                 path = f'{data_args.e2e_train}/src1_train.txt'
+                embedding_path = f'{data_args.e2e_train}/src1_train_embeddings.pt'
             elif split == 'valid':
                 print('loading form the VALID set')
                 path = f'{data_args.e2e_train}/src1_valid.txt'
+                embedding_path = f'{data_args.e2e_train}/src1_valid_embeddings.pt'
             elif split == 'test':
                 print('loading form the TEST set')
                 path = f'{data_args.e2e_train}/src1_test.txt'
+                embedding_path = f'{data_args.e2e_train}/src1_test_embeddings.pt'
             elif split == 'debug':
                 print('loading form the DEBUG set')
                 path = data_args.debug_path
@@ -413,6 +488,10 @@ def get_corpus_rocstory(data_args, model, image_size, padding_mode='block',
                         word_lst = row.split('||')[1]
                         word_lst = [x.text for x in tokenizer(word_lst)]
                         sentence_lst.append(word_lst)
+            word_embeddings = None
+            if cfg:
+                word_embeddings = torch.load(embedding_path)
+                print(f"Loaded word embeddings from {embedding_path} with shape {word_embeddings.shape}")
             print(sentence_lst[:2])
 
         elif data_args.modality == 'yelp':
@@ -518,6 +597,7 @@ def get_corpus_rocstory(data_args, model, image_size, padding_mode='block',
 
         # get tokenizer.
         if load_vocab is None:
+            print("No vocab, computed through counter")
             counter = Counter()
             for input_ids in sentence_lst:
                 counter.update(input_ids)
@@ -600,7 +680,16 @@ def get_corpus_rocstory(data_args, model, image_size, padding_mode='block',
         train_dataset = helper_tokenize_stream(sentence_lst, vocab_dict, model, image_size**2, data_args, padding_mode)
         return train_dataset, model
     elif data_args.experiment_mode == 'lm':
-        result_train_lst = helper_tokenize_encode(sentence_lst, vocab_dict, model, image_size**2, data_args, padding_mode)
+        result_train_lst = helper_tokenize_encode(
+            sentence_lst,
+            vocab_dict,
+            model,
+            image_size**2,
+            data_args,
+            padding_mode,
+            cfg = cfg,
+            word_embeddings = word_embeddings,
+        )
     elif data_args.experiment_mode == 'conditional_gen':
         result_train_lst = helper_tokenize_encode_cond(sentence_lst, vocab_dict, model, image_size ** 2, data_args)
     return {'train': result_train_lst}, model
@@ -723,7 +812,7 @@ def get_corpus_book(data_args, tokenizer, model, image_size, padding_mode='block
 class TextDataset(Dataset):
     def __init__(self, text_datasets, resolution, data_args, model_arch='conv-unet',
                  classes=None, shard=0, num_shards=1, eigen_transform=None,
-                 mapping_func=None, model_emb=None):
+                 mapping_func=None, model_emb=None, cfg=False):
         super().__init__()
         self.resolution = resolution
         self.text_datasets = text_datasets
@@ -734,6 +823,7 @@ class TextDataset(Dataset):
         self.eigen_transform = eigen_transform
         self.mapping_func = mapping_func
         self.model_emb = model_emb
+        self.cfg = cfg
         # self.local_images = image_paths[shard:][::num_shards]
         # self.local_classes = None if classes is None else classes[shard:][::num_shards]
 
@@ -785,6 +875,7 @@ class TextDataset(Dataset):
         else:
             arr = np.array(self.text_datasets['train'][idx]['hidden_states'],
                            dtype=np.float32)
+            embedding = self.text_datasets['train'][idx]['input_embedding'].detach()
             if self.eigen_transform  is not None:
                 old_shape = arr.shape
                 # arr = arr.reshape(1, -1) @ self.eigen_transform
@@ -801,6 +892,12 @@ class TextDataset(Dataset):
             out_dict = {}
             out_dict['input_ids'] = np.array(self.text_datasets['train'][idx]['input_ids'])
             # out_dict['mapping_func'] = self.mapping_func
+            if self.cfg:
+                # p(unconditional) = 0.1, setting that works well according to the paper
+                if random.randint(1, 10) == 1:
+                    out_dict['embedding_conditional'] = torch.zeros_like(embedding)
+                else:
+                    out_dict['embedding_conditional'] = embedding
             if self.data_args.experiment_mode == 'conditional_gen':
                 out_dict['src_ids'] = np.array(self.text_datasets['train'][idx]['src_ids'])
                 out_dict['src_mask'] = np.array(self.text_datasets['train'][idx]['src_mask'])
@@ -920,6 +1017,28 @@ def _collate_batch_helper(examples, pad_token_id, max_length, return_mask=False)
     if return_mask:
         return result, mask_
     return result
+
+
+def _collate_batch_helper_cfg(examples, word_embeddings, pad_token_id, max_length):
+    result = torch.full([len(examples), max_length], pad_token_id, dtype=torch.int64).tolist()
+    mask_ = torch.full([len(examples), max_length], pad_token_id, dtype=torch.int64).tolist()
+    skipped = 0
+    indices = []
+    for i, example in enumerate(examples):
+        if len(example) > max_length:
+            skipped += 1
+            print(f"Skipped example {skipped}")
+            continue
+        indices.append(i)
+        curr_len = min(len(example), max_length) # should be len(example) now because of the condition above
+        result[i][:curr_len] = example[:curr_len]
+        mask_[i][:curr_len] = [1] * curr_len
+    embeddings = word_embeddings[indices]
+    final_result = []
+    for i in indices:
+        final_result.append(result[i])
+    print(len(final_result), len(final_result[0]), type(final_result[0][0]), embeddings.shape)
+    return final_result, embeddings
 
 def _torch_collate_batch(examples, pad_token_id, max_length):
     """Collate `examples` into a batch, using the information in `tokenizer` for padding if necessary."""
