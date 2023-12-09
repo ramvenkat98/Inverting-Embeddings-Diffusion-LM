@@ -1,8 +1,10 @@
 """
 Train a diffusion model on images.
 """
-import sys
-sys.path.append('/home/ramvenkat98/Diffusion-LM/improved-diffusion')
+# Add in case the imports from improved_diffusion don't work because of the
+# directory we're running it from
+# import sys
+# sys.path.append('<path-to-repo>' '/Diffusion-LM/improved-diffusion')
 import argparse
 import json, torch, os
 import numpy as np

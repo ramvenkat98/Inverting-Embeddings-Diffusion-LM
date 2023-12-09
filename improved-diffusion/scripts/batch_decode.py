@@ -104,9 +104,6 @@ for lst in full_lst:
         out_path2 =  os.path.join(out_dir, f"{model_base_name}.samples_{top_p}.txt")
     output_cands = glob.glob(out_path2)
     print(out_path2, output_cands)
-
-    assert False
-
     if len(output_cands) > 0:
         out_path2 = glob.glob(out_path2)[0]
     else:

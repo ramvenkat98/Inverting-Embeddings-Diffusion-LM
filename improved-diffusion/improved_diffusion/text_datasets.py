@@ -332,52 +332,7 @@ def load_glove(vocab):
     return model
 
 def get_nq_data(data_args, model, split = 'train'):
-    if split == 'val':
-        raise NotImplementedError
-    train_dataset_path = '/home/ramvenkat98/.cache/inversion/0aaa9cff054220b8af32ddcf5a1e837b.arrow'
-    print("Loading dataset from", train_dataset_path)
-    train_dataset = datasets.load_from_disk(train_dataset_path)
-    '''
-    result_train_lst = []
-    group_lst = defaultdict(list)
-    with torch.no_grad():
-        for input_ids in sentence_lst:
-            tokenized_ = [vocab_dict.get(x, vocab_dict['UNK']) for x in input_ids]
-            input_ids = [0] + tokenized_ + [1]
-            group_lst['word_ids'].append(input_ids)
-        print(group_lst['word_ids'][:2])
-
-        if padding_mode == 'block':
-            print('padding mode is block')
-            concatenated_examples = {k: sum(group_lst[k], []) for k in group_lst.keys()}
-            total_length = len(concatenated_examples[list(group_lst.keys())[0]])
-            block_size = seqlen
-            total_length = (total_length // block_size) * block_size
-            # Split by chunks of max_len.
-            group_lst = {
-                k: [t[i: i + block_size] for i in range(0, total_length, block_size)]
-                for k, t in concatenated_examples.items()
-            }
-        elif padding_mode == 'pad':
-            print('padding mode is pad')
-            max_length = seqlen
-            group_lst['word_ids'] = _collate_batch_helper(group_lst['word_ids'], vocab_dict['PAD'], max_length)
-
-        for input_ids in group_lst['word_ids']:
-            if data_args.experiment.startswith('random'):
-                hidden_state = model(torch.tensor(input_ids))
-            elif data_args.experiment == 'gpt2_pre_compress':
-                input_ids2 = torch.tensor(input_ids).to(model.device)
-                input_embs = model.transformer.wte(input_ids2)  # input_embs
-                hidden_state = model.down_proj(input_embs)
-                hidden_state = hidden_state * data_args.emb_scale_factor
-            elif data_args.experiment == 'glove':
-                hidden_state = model(torch.tensor(input_ids))
-            result_train_lst.append({'input_ids': input_ids, 'hidden_states': hidden_state.cpu().tolist()})
-
-    return result_train_lst
-    '''
-    pass
+    raise NotImplementedError
 
 def get_corpus_rocstory(data_args, model, image_size, padding_mode='block',
                         split='train', load_vocab=None, cfg=False):

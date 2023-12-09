@@ -5,8 +5,10 @@ numpy array. This can be used to produce samples for FID evaluation.
 
 import argparse
 import os, json
-import sys
-sys.path.append('/home/ramvenkat98/Diffusion-LM/improved-diffusion')
+# Add in case the imports from improved_diffusion don't work because of the
+# directory we're running it from
+# import sys
+# sys.path.append('<path-to-repo>' '/Diffusion-LM/improved-diffusion')
 import numpy as np
 import torch as th
 import torch.distributed as dist
@@ -114,8 +116,8 @@ def main():
             )
             model_kwargs["y"] = classes
         if args.cfg:
-            embedding_path = f'/home/ramvenkat98/Diffusion-LM/datasets/e2e_data/src1_test_embeddings.pt'
-            word_embeddings = th.load(embedding_path)[:20] # 0]
+            embedding_path = args.embedding.path
+            word_embeddings = th.load(embedding_path)[:20]
             print("Word embeddings shape:", word_embeddings.shape)
             model_kwargs['embedding_conditional'] = word_embeddings.to('cuda')
         sample_fn = (
@@ -266,7 +268,8 @@ def create_argparser():
         model_path="",
         model_arch='conv-unet',
         verbose='yes',
-        out_dir="diffusion_lm/improved_diffusion/out_gen"
+        out_dir="diffusion_lm/improved_diffusion/out_gen",
+        embedding_path="",
     )
     text_defaults = dict(modality='text',
                          dataset_name='wikitext',
