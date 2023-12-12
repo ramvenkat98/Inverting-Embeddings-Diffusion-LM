@@ -1,4 +1,23 @@
-# Diffusion-LM Improves Controllable Text Generation
+# Adapting Diffusion-LM for Embedding Inversion
+
+This was done as part of the final project for CS236. We apply classifier-free-guidance to the recently introduced diffusion-LM model and study the performance on an embedding inversion task. 
+
+The command to train such a model and reproduce the result in the project report is as follows:
+```
+OPENAI_LOGDIR=<output_dir_path>  TOKENIZERS_PARALLELISM=false python scripts/train.py   --checkpoint_path <output_dir_path> --model_arch transformer --modality e2e-tgt --save_interval 10000 --lr 0.0001 --batch_size 64  --diffusion_steps 2000 --noise_schedule sqrt  --use_kl False --learn_sigma False  --image_size 8 --num_channels 128 --seed 102 --dropout 0.1 --in_channel 256 --out_channel 256 --padding_mode pad --experiment random  --lr_anneal_steps 200000 --weight_decay 0.0 --num_res_blocks 2  --predict_xstart True --training_mode e2e --vocab_size 1024 --cfg True --e2e_train ../datasets/e2e_data
+```
+
+This will start training, and save relevant model parameters, weights, etc. to the specified output directory. To sample conditioned on some embeddings, we can run
+```
+python scripts/text_sample.py --model_path <model_path_in_out_dir> --batch_size 500 --num_samples 500 --top_p -1.0 --out_dir <sample_out_dir> --embedding_path <path_to_embeddings_to_invert>
+```
+
+You can then use `get_embeddings.py` and `compute_similarity.py` accordingly to evaluate the generated samples and find their cosine similarity.
+
+
+## Everything below this is from the original repo, only the changes above are from our fork.
+---
+## Diffusion-LM Improves Controllable Text Generation
 
 https://arxiv.org/pdf/2205.14217.pdf 
 
