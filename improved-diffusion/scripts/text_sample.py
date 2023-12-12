@@ -7,8 +7,8 @@ import argparse
 import os, json
 # Add in case the imports from improved_diffusion don't work because of the
 # directory we're running it from
-# import sys
-# sys.path.append('<path-to-repo>' '/Diffusion-LM/improved-diffusion')
+import sys
+sys.path.append(os.getcwd())
 import numpy as np
 import torch as th
 import torch.distributed as dist
@@ -116,8 +116,8 @@ def main():
             )
             model_kwargs["y"] = classes
         if args.cfg:
-            embedding_path = args.embedding.path
-            word_embeddings = th.load(embedding_path)[:20]
+            embedding_path = args.embedding_path
+            word_embeddings = th.zeros_like(th.load(embedding_path))# [:500]
             print("Word embeddings shape:", word_embeddings.shape)
             model_kwargs['embedding_conditional'] = word_embeddings.to('cuda')
         sample_fn = (

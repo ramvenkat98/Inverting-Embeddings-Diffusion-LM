@@ -3,8 +3,9 @@ Train a diffusion model on images.
 """
 # Add in case the imports from improved_diffusion don't work because of the
 # directory we're running it from
-# import sys
-# sys.path.append('<path-to-repo>' '/Diffusion-LM/improved-diffusion')
+import sys
+sys.path.append(os.getcwd())
+
 import argparse
 import json, torch, os
 import numpy as np

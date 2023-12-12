@@ -41,6 +41,7 @@ def model_and_diffusion_defaults():
         config_name='bert-base-uncased',
         experiment_mode='lm',
         logits_mode=1,
+        init_pretrained=False,
         cfg=False,
     )
 
@@ -73,6 +74,7 @@ def create_model_and_diffusion(
     config_name,
     experiment_mode,
     logits_mode,
+    init_pretrained,
     cfg,
     **kwargs,
 ):
@@ -96,6 +98,7 @@ def create_model_and_diffusion(
         config_name=config_name,
         experiment_mode=experiment_mode,
         logits_mode=logits_mode,
+        init_pretrained=init_pretrained,
         cfg=cfg,
     )
     diffusion = create_gaussian_diffusion(
@@ -134,6 +137,7 @@ def create_model(
     config_name='',
     experiment_mode='lm',
     logits_mode=1,
+    init_pretrained=False,
     cfg=False,
 ):
     print(f'creating model, based on {model_arch}')
@@ -256,8 +260,8 @@ def create_model(
         for res in attention_resolutions.split(","):
             attention_ds.append(image_size // int(res))
         print("Model is a TransformerNetModel2")
-        print(f"CFG is {cfg}, in_channels was originally {in_channel}")
-        return TransformerNetModel2(
+        print(f"CFG is {cfg}, in_channels was originally {in_channel}, init_pretrained is {init_pretrained}")
+        model = TransformerNetModel2(
             in_channels=in_channel,  # 3, DEBUG**
             model_channels=num_channels,
             out_channels=(out_channel if not learn_sigma else out_channel*2),  # DEBUG**  (3 if not learn_sigma else 6),
@@ -276,7 +280,11 @@ def create_model(
             experiment_mode=experiment_mode,
             logits_mode=logits_mode,
             cfg=cfg,
+            init_pretrained=init_pretrained,
         )
+        pytorch_total_params = sum(p.numel() for p in model.parameters())
+        print(f"Model has {pytorch_total_params} parameters")
+        return model
     else:
         raise NotImplementedError
 
