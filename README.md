@@ -12,7 +12,7 @@ This will start training, and save relevant model parameters, weights, etc. to t
 python scripts/text_sample.py --model_path <model_path_in_out_dir> --batch_size 500 --num_samples 500 --top_p -1.0 --out_dir <sample_out_dir> --embedding_path <path_to_embeddings_to_invert>
 ```
 
-You can then use `get_embeddings.py` and `compute_similarity.py` accordingly to evaluate the generated samples and find their cosine similarity.
+You can then use `get_embeddings.py` and `compute_similarity.py` in `eval_scripts` accordingly to evaluate the generated samples and find their cosine similarity.
 
 
 ## Everything below this is from the original repo, only the changes above are from our fork.
