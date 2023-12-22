@@ -1,6 +1,8 @@
 # Adapting Diffusion-LM for Embedding Inversion
 
-This was done as part of the final project for CS236. We apply classifier-free-guidance to the recently introduced diffusion-LM model and study the performance on an embedding inversion task. 
+This repo contains the second part of work done for my final project for CS236 (the first part can be found [here](https://github.com/ramvenkat98/vec2text-imitator)). We apply classifier-free-guidance to the recently introduced diffusion-LM model and study the performance on an embedding inversion task. 
+
+[Project Write-up](https://github.com/ramvenkat98/Inverting-Embeddings-Diffusion-LM/blob/main/cs236_final_report.pdf) for reference.
 
 The command to train such a model and reproduce the result in the project report is as follows:
 ```
